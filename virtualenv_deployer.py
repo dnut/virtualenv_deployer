@@ -133,14 +133,12 @@ def dependencies_list(dependencies_dir):
 
 def rerun_in_virtualenv(python):
 	args = [python, __file__] + sys.argv[1:] + ['--__INTERNAL_FLAG_DONT_USE__running-in-virtualenv']
-	print 'args', args
 	process = subprocess.Popen(args)
 	process.communicate()
 	return process.returncode
 
 
 if __name__ == '__main__':
-	print 'sys.argv', sys.argv
 	args = parse_args()
 	if not args.__INTERNAL_FLAG_DONT_USE__running_in_virtualenv:
 		WORKING_DIR = os.path.join(args.destination, 'venv')
