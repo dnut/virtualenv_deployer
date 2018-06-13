@@ -5,12 +5,16 @@ import platform
 import shutil
 import subprocess
 import sys
-import urllib
 import zipfile
+# Python 2/3 compatibility
 try:
-	from pip import main as pip_main
+	from urllib import urlretrieve
 except ImportError:
-	from pip._internal import main as pip_main
+	from urllib.request import urlretrieve
+try:
+	input = raw_input
+except NameError:
+	pass
 
 VIRTUALENV_VERSION = '16.0.0'
 
@@ -28,7 +32,8 @@ def parse_args():
 	parser.add_argument('-o', '--destination')
 	parser.add_argument('-d', '--dependencies')
 	parser.add_argument('-r', '--requirements')
-	parser.add_argument('--__INTERNAL_FLAG_DONT_USE__running-in-virtualenv', action='store_true')
+	parser.add_argument('--__INTERNAL_FLAG_DONT_USE__running-in-virtualenv',
+						action='store_true')
 	return parser.parse_args()
 
 
@@ -37,21 +42,23 @@ def check_for_venv(path):
 	python = os.path.join(bin_dir, 'python' + SystemStrings.EXE)
 	activate = os.path.join(bin_dir, 'activate' + SystemStrings.BAT)
 	try:
-		validate_command([python, '-c', 'print("hello world")'], 'hello world\n')
+		validate_command([python, '-c', 'import sys; print("python " + str(sys.version_info[0]))'],
+						 ("python " + str(sys.version_info[0])) + '\n')
 		validate_command(SystemStrings.SH + [activate])
-	except RuntimeError as e:
+	except (OSError, RuntimeError) as e:
 		print('virtualenv is not valid: ' + str(e))
 		return False
 	return True
 
 
-def validate_command(args, expected_stdout='', expected_stderr='', expected_returncode=0):
+def validate_command(args, expected_stdout=b'', expected_stderr=b'', expected_returncode=0):
 	process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-	stdout, stderr = process.communicate()
+	stdout, stderr = [i.decode("utf-8") for i in process.communicate()]
 	if process.returncode != expected_returncode:
 		raise RuntimeError('{} exited with incorrect return code: '
-						   'expected {}, actual {}'.format(args, expected_returncode,
-														   process.returncode))
+						   'expected {}, actual {}\n\nstdout:\n{}\n\nstderr:\n{}\n\n'
+						   .format(args, expected_returncode, process.returncode,
+								   stdout, stderr))
 	if stdout != expected_stdout:
 		raise RuntimeError('{} output incorrect stdout:\nexpected: '
 						   '{}\nactual: {}'.format(args, expected_stdout, stdout))
@@ -76,7 +83,7 @@ def download_virtualenv(destination, version):
 	url = 'https://github.com/pypa/virtualenv/archive/{}.zip'.format(version)
 	local = os.path.join(destination, 'venv_{}.zip'.format(version))
 	print('Downloading virtualenv...')
-	urllib.urlretrieve(url, local)
+	urlretrieve(url, local)
 	zip_ref = zipfile.ZipFile(local, 'r')
 	print('Extracting virtualenv...')
 	zip_ref.extractall(destination)
@@ -86,8 +93,10 @@ def download_virtualenv(destination, version):
 
 def create_virtualenv(source, destination):
 	virtualenv = imp.load_source('virtualenv', source)
+	orig_sys_argv = sys.argv
 	sys.argv = ['virtualenv.py', destination]
 	virtualenv.main()
+	sys.argv = orig_sys_argv
 
 
 def setup_virtualenv(root):
@@ -106,7 +115,7 @@ def yn(prompt, preference=None):
 	else:
 		yn_prompt = {'y': 'Y, n', 'n': 'y, N'}[preference.lower()]
 	while True:
-		yn = raw_input(prompt + '\n:: [{}] '.format(yn_prompt))
+		yn = input(prompt + '\n:: [{}] '.format(yn_prompt))
 		yes = yn.lower() == 'y' or yn.lower() == 'yes'
 		no = yn.lower() == 'n' or yn.lower() == 'no'
 		if yes or no:
@@ -132,7 +141,8 @@ def dependencies_list(dependencies_dir):
 
 
 def rerun_in_virtualenv(python):
-	args = [python, __file__] + sys.argv[1:] + ['--__INTERNAL_FLAG_DONT_USE__running-in-virtualenv']
+	args = [python, __file__] + sys.argv[1:]\
+		   + ['--__INTERNAL_FLAG_DONT_USE__running-in-virtualenv']
 	process = subprocess.Popen(args)
 	process.communicate()
 	return process.returncode
@@ -153,6 +163,10 @@ if __name__ == '__main__':
 							  'python' + SystemStrings.EXE)
 		sys.exit(rerun_in_virtualenv(python))
 	else:
+		try:
+			from pip import main as pip_main
+		except ImportError:
+			from pip._internal import main as pip_main
 		for pkg in dependencies_list(args.dependencies)\
 				+ requirements_list(args.requirements):
 			pip_main(['install', pkg])
