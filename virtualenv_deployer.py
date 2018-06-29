@@ -75,7 +75,7 @@ def resolve_arguments(args):
 	args.requirements = resolve_item(args.requirements, 'requirements.txt',
 									 os.path.isfile, 'requirements file')
 	args.virtualenv_zip = resolve_item(args.virtualenv_zip, 'virtualenv.zip',
-									   os.path.isdir, 'pre-existing virtualenv.zip')
+									   os.path.isfile, 'pre-existing virtualenv.zip')
 
 
 def resolve_item(specified, default, checker, name=''):
