@@ -185,20 +185,20 @@ def validate_command(args, expected_stdout=b'', expected_stderr=b'',
 	if process.returncode != expected_returncode:
 		raise RuntimeError('{} exited with incorrect return code: '
 						   'expected {}, actual {}\n\nstdout:\n{}\n\nstderr:\n{}\n\n'
-						   .format(args, expected_returncode,
-								   process.returncode,
-								   stdout, stderr))
-	
-	if str(stdout) != str(expected_stdout):
+						   .format(args, expected_returncode, process.returncode, stdout, stderr))
+	stdout, stderr, expected_stdout, expected_stderr = \
+		neutralize(stdout), neutralize(stderr), \
+		neutralize(expected_stdout), neutralize(expected_stderr)
+	if stdout != expected_stdout:
 		raise RuntimeError('{} output incorrect stdout:\nexpected: '
-						   '{}\nactual: {}'.format(args,
-												   repr(str(expected_stdout)),
-												   repr(str(stdout))))
-	if str(stderr) != str(expected_stderr):
+						   '{}\nactual: {}'.format(args, repr(expected_stdout), repr(stdout)))
+	if stderr != expected_stderr:
 		raise RuntimeError('{} output incorrect stderr:\nexpected: '
-						   '{}\nactual: {}'.format(args,
-												   repr(str(expected_stderr)),
-												   repr(str(stderr))))
+						   '{}\nactual: {}'.format(args, repr(expected_stderr), repr(stderr)))
+
+
+def neutralize(s):
+	return str(s.replace('\r', ''))
 
 
 def makedirs_delete_existing(path):
@@ -318,126 +318,3 @@ class DependencyHandler(object):
 
 if __name__ == '__main__':
 	main()
-
-#
-# def validate_args(args):
-# 	if args.dependencies is not None and not os.path.isdir(args.dependencies):
-# 		raise OSError('Dependencies folder not found: {}'.format(args.dependencies))
-# 	if args.requirements is not None and not os.path.isfile(args.requirements):
-# 		raise OSError('Requirements file not found: {}'.format(args.requirements))
-# 	if args.virtualenv_zip is not None and not os.path.isfile(args.virtualenv_zip):
-# 		raise OSError('Virtualenv zip not found: {}'.format(args.virtualenv_zip))
-#
-#
-# def set_default_args(args):
-# 	if args.destination is None:
-# 		args.destination = 'deployment'
-# 	if args.dependencies is None:
-# 		if os.path.isdir('dependencies'):
-# 			args.dependencies = 'dependencies'
-# 		else:
-# 			print 'No dependencies folder specified, and "./dependencies" does'\
-# 				  ' not exist, so skipping local dependency installation.'
-# 	if args.requirements is None and os.path.isfile('requirements.txt'):
-# 		if os.path.isdir('dependencies'):
-# 			args.dependencies = 'dependencies'
-# 		else:
-# 			print 'No dependencies folder specified, and "./dependencies" does'\
-# 				  ' not exist, so skipping local dependency installation.'
-# 		args.requirements = 'requirements.txt'
-
-
-# def ensure_virtualenv_existence(virtualenv_home):
-# 	if not check_for_venv(virtualenv_home):
-# 		msg = 'A virtual environment is required, and you do not appear to' \
-# 			  ' have one.\nWould you like to install a virtual environment?'
-# 		if yn(msg, 'y'):
-# 			setup_virtualenv(virtualenv_home)
-# 		else:
-# 			raise RuntimeError('Valid virtual environment not installed.')
-
-
-# def install_dependencies(dependencies, requirements):
-# 	try:
-# 		from pip import main as pip_main
-# 	except ImportError:
-# 		from pip._internal import main as pip_main
-# 	for pkg in dependencies_list(dependencies) \
-# 			+ requirements_list(requirements):
-# 		pip_main(['install', pkg])
-
-
-# def check_for_venv(path):
-# 	bin_dir = os.path.join(path, platform.system(), SystemStrings.BIN_DIR)
-# 	python = os.path.join(bin_dir, 'python' + SystemStrings.EXE)
-# 	activate = os.path.join(bin_dir, 'activate' + SystemStrings.BAT)
-# 	try:
-# 		validate_command([python, '-c', 'import sys; print("python " + str(sys.version_info[0]))'],
-# 						 ("python " + str(sys.version_info[0])) + '\n')
-# 		validate_command([SystemStrings.SH] if SystemStrings.SH else [] + [activate])
-# 	except (OSError, RuntimeError) as e:
-# 		print('virtualenv is not valid: ' + str(e))
-# 		return False
-# 	return True
-
-
-# def activate_virtualenv(path):
-# 	bin_dir = {'Linux': 'bin', 'Windows': 'Scripts'}[platform.system()]
-# 	activate_this = os.path.join(path, platform.system(), bin_dir, 'activate_this.py')
-# 	execfile(activate_this, dict(__file__=activate_this))
-
-
-# def setup_virtualenv(root):
-# 	tmp = os.path.join(root, 'tmp')
-# 	os_venv = os.path.join(root, platform.system())
-# 	makedirs_delete_existing(tmp)
-# 	print('Downloading virtualenv...')
-# 	venv_zip = download_virtualenv(tmp, VIRTUALENV_VERSION)
-# 	print('Extracting virtualenv...')
-# 	extract_zip(venv_zip, tmp)
-# 	print('virtualenv source acquired.')
-# 	virtualenvpy = os.path.join(tmp, 'virtualenv-{}'.format(VIRTUALENV_VERSION), 'virtualenv.py')
-# 	makedirs_delete_existing(os_venv)
-# 	create_virtualenv(virtualenvpy, os_venv)
-
-
-
-# def download_virtualenv(destination, version):
-# 	url = 'https://github.com/pypa/virtualenv/archive/{}.zip'.format(version)
-# 	local = os.path.join(destination, 'venv_{}.zip'.format(version))
-# 	urlretrieve(url, local)
-# 	return local
-
-# def create_virtualenv(source, destination):
-# 	virtualenv = imp.load_source('virtualenv', source)
-# 	orig_sys_argv = sys.argv
-# 	sys.argv = ['virtualenv.py', destination]
-# 	virtualenv.main()
-# 	sys.argv = orig_sys_argv
-
-
-# def requirements_list(requirements_file):
-# 	if not os.path.isfile(requirements_file) or requirements_file is None:
-# 		print('No requirements file at {}, skipping requirements installation'
-# 			  .format(requirements_file))
-# 		return []
-# 	with open(requirements_file) as f:
-# 		return [pkg.rstrip('\n').replace('-', '_') for pkg in f.readlines()]
-#
-#
-# def dependencies_list(dependencies_dir):
-# 	if not os.path.isdir(dependencies_dir) or dependencies_dir is None:
-# 		print('No dependencies directory at {}, skipping local dependency installation'
-# 			  .format(dependencies_dir))
-# 		return []
-# 	return [os.path.join(dependencies_dir, filename) for filename
-# 			in os.listdir(dependencies_dir) if filename[-2:] in ('hl', 'gz', 'gg')]
-
-
-# def rerun_in_virtualenv(python):
-# 	args = [python, __file__] + sys.argv[1:]\
-# 		   + ['--__INTERNAL_FLAG_DONT_USE__running-in-virtualenv']
-# 	process = subprocess.Popen(args)
-# 	process.communicate()
-# 	return process.returncode
-
