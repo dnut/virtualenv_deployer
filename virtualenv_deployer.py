@@ -230,6 +230,8 @@ def extract_zip(source, destination):
 
 
 def yn(prompt, preference=None):
+	if YES:
+		return True
 	if preference is None:
 		yn_prompt = 'y, n'
 	else:
