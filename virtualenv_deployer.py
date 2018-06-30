@@ -27,8 +27,11 @@ class SystemStrings:
 	RETURN = {'Windows': '\r\n'}.get(platform.system(), '\n')
 
 
-def main():
-	args = _parse_args()
+def main(args=None):
+	if args is None:
+		args = _parse_args()
+	else:
+		args = _parse_args(args)
 	virtualenv = VirtualEnv(args.destination, args.virtualenv_zip)
 	if args.install_here:
 		installer = Installer(args.dependencies)
