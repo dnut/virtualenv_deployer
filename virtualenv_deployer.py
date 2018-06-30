@@ -43,6 +43,13 @@ def main(clargs=None):
 		virtualenv.run_inside([__file__] + ['--install-here'] + clargs)
 
 
+def get_virtualenv(clargs=None):
+	if clargs is None:
+		clargs = sys.argv[1:]
+	args = _parse_args(clargs)
+	return VirtualEnv(args.destination, args.virtualenv_zip)
+
+
 def _parse_args(clargs=None):
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-y', '--yes', action='store_true')
@@ -131,6 +138,7 @@ class VirtualEnv(object):
 		self.bin_dir = os.path.join(self.home, platform.system(), SystemStrings.BIN_DIR)
 		self.python = os.path.join(self.bin_dir, 'python' + SystemStrings.EXE)
 		self.activate = os.path.join(self.bin_dir, 'activate' + SystemStrings.BAT)
+		self._activate_this = os.path.join(self.bin_dir, 'activate_this.py')
 		self.tmp = os.path.join(self.home, 'tmp')
 		self.os_folder = os.path.join(self.home, platform.system())
 		
@@ -190,6 +198,9 @@ class VirtualEnv(object):
 	
 	def install_inside(self, pip_args):
 		return self.run_inside(['-m', 'pip', 'install', pip_args])
+	
+	def activate_this(self):
+		execfile(self._activate_this, dict(__file__=self._activate_this))
 
 
 def validate_command(args, expected_stdout=b'', expected_stderr=b'',
