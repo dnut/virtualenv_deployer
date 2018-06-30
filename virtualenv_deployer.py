@@ -16,18 +16,7 @@ try:
 except NameError:
 	pass
 
-_pip_main = None
-
-
-def pip_main(*args, **kwargs):
-	global _pip_main
-	if _pip_main is None:
-		try:
-			from pip import main as pip_main
-		except ImportError:
-			from pip._internal import main as pip_main
-		_pip_main = pip_main
-	return _pip_main(*args, **kwargs)
+YES = False
 
 
 class SystemStrings:
@@ -39,46 +28,59 @@ class SystemStrings:
 
 
 def main():
-	args = parse_args()
-	if not args.__INTERNAL_FLAG_DONT_USE__running_in_virtualenv:
-		virtualenv = VirtualEnv(args.destination, args.virtualenv_zip)
-		virtualenv.ensure_existence()
-		exit_code = rerun_in_virtualenv(virtualenv)
-		sys.exit(exit_code)
+	args = _parse_args()
+	virtualenv = VirtualEnv(args.destination, args.virtualenv_zip)
+	if args.install_here:
+		installer = Installer(args.dependencies)
+		if args.requirements is not None:
+			installer.install_requirements(args.requirements)
+		if args.pip_install is not None:
+			installer.install(args.pip_install)
 	else:
-		# dependency_handler = DependencyHandler(args.dependencies, args.requirements)
-		# dependency_handler.install_unmet()
-		install_dependencies(args.dependencies, args.requirements)
+		virtualenv.ensure_existence()
+		virtualenv.run_inside(sys.argv[:1] + ['--install-here'] + sys.argv[1:])
 
 
-def parse_args():
+def _parse_args():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-y', '--yes', action='store_true')
 	parser.add_argument('-o', '--destination')
 	parser.add_argument('-d', '--dependencies')
 	parser.add_argument('-r', '--requirements')
 	parser.add_argument('-v', '--virtualenv-zip')
-	parser.add_argument('--__INTERNAL_FLAG_DONT_USE__running-in-virtualenv',
-						action='store_true')
+	parser.add_argument('-i', '--pip-install', nargs=argparse.REMAINDER,
+						help='Run pip install <args> in the virtualenv. Only '
+							 'use this option as the final option, because '
+							 'everything following it will be assumed to be '
+							 'pip arguments.')
+	parser.add_argument('--install-here', action='store_true',
+						help='Use this flag to indicate the script is being '
+							 'called from within the virtualenv, and it should '
+							 'install distributions directly into the calling '
+							 'python installation.')
 	args = parser.parse_args()
-	resolve_arguments(args)
+	_resolve_arguments(args)
+	if args.yes:
+		global YES
+		YES = True
 	return args
 
 
-def resolve_arguments(args):
+def _resolve_arguments(args):
+	"""Don't just use default values because default values are treated special"""
 	if args.destination is None:
 		cwd = os.getcwd()
-		print 'Deploying to working directory: ' + cwd
+		print('Deploying to working directory: ' + cwd)
 		args.destination = cwd
-	args.dependencies = resolve_item(args.dependencies, 'dependencies',
-									 os.path.isdir, 'local dependencies')
-	args.requirements = resolve_item(args.requirements, 'requirements.txt',
-									 os.path.isfile, 'requirements file')
-	args.virtualenv_zip = resolve_item(args.virtualenv_zip, 'virtualenv.zip',
-									   os.path.isfile, 'pre-existing virtualenv.zip')
+	args.dependencies = _resolve_item(args.dependencies, 'dependencies',
+									  os.path.isdir, 'local dependencies')
+	args.requirements = _resolve_item(args.requirements, 'requirements.txt',
+									  os.path.isfile, 'requirements file')
+	args.virtualenv_zip = _resolve_item(args.virtualenv_zip, 'virtualenv.zip',
+										os.path.isfile, 'pre-existing virtualenv.zip')
 
 
-def resolve_item(specified, default, checker, name=''):
+def _resolve_item(specified, default, checker, name=''):
 	if specified is not None:
 		if checker(specified):
 			return specified
@@ -86,28 +88,36 @@ def resolve_item(specified, default, checker, name=''):
 			raise ValueError('Not found: "{}"'.format(specified))
 	else:
 		if checker(default):
-			print 'Using default {}: "{}"'.format(name, default)
+			print('Using default {}: "{}"'.format(name, default))
 			return default
 		else:
-			print '"{}" not found. Not using {}'.format(default, name)
+			print('"{}" not found. Not using {}'.format(default, name))
 
 
-def validate_and_set_defaults(args):
-	if args.destination is None:
-		args.destination = 'deployment'
-	if args.dependencies is None:
-		if os.path.isdir('dependencies'):
-			args.dependencies = 'dependencies'
-		else:
-			print 'No dependencies folder specified, and "./dependencies" does'\
-				  ' not exist, so skipping local dependency installation.'
-	elif not os.path.isdir(args.dependencies):
-		raise OSError('Dependencies folder not found: {}'.format(args.dependencies))
-
-
-def rerun_in_virtualenv(virtualenv):
-	rerun_flag = '--__INTERNAL_FLAG_DONT_USE__running-in-virtualenv'
-	return virtualenv.run_in_virtualenv([__file__] + sys.argv[1:] + [rerun_flag])
+class Installer(object):
+	_pip_main = None
+	
+	def __init__(self, local_packages=None):
+		self.common_pip_args = []
+		if local_packages is not None:
+			self.common_pip_args += ['--find-links',
+									 'file://' + os.path.abspath(local_packages)]
+	
+	def install_requirements(self, requirements_txt):
+		self.install(['-r', requirements_txt])
+	
+	def install(self, pip_args):
+		self.pip_main(['install'] + pip_args)
+	
+	@property
+	def pip_main(self):
+		if self._pip_main is None:
+			try:
+				from pip import main as pip_main
+			except ImportError:
+				from pip._internal import main as pip_main
+			self._pip_main = pip_main
+		return self._pip_main
 
 
 class VirtualEnv(object):
@@ -171,10 +181,13 @@ class VirtualEnv(object):
 		virtualenv.main()
 		sys.argv = orig_sys_argv
 	
-	def run_in_virtualenv(self, args):
+	def run_inside(self, args):
 		process = subprocess.Popen([self.python] + args)
 		process.communicate()
 		return process.returncode
+	
+	def install_inside(self, pip_args):
+		return self.run_inside(['-m', 'pip', 'install', pip_args])
 
 
 def validate_command(args, expected_stdout=b'', expected_stderr=b'',
@@ -198,7 +211,7 @@ def validate_command(args, expected_stdout=b'', expected_stderr=b'',
 
 
 def neutralize(s):
-	return str(s.replace('\r', ''))
+	return str(s).replace('\r', '')
 
 
 def makedirs_delete_existing(path):
@@ -231,89 +244,6 @@ def yn(prompt, preference=None):
 			print('You must select either y or n.')
 		else:
 			return preference.lower() == 'y'
-
-
-def install_dependencies(dependencies_dir, requirements_txt):
-	pip_main(['install', '-r', requirements_txt,
-			  '--find-links', 'file://' + os.path.abspath(dependencies_dir)])
-
-
-class DependencyHandler(object):
-	"""The entire job of this class can be accomplished with the
-	install_dependencies function, however that function always imports pip,
-	which takes a long time, and is a problem if we want to run this script
-	right before every time we run an application, so this is an attempt to
-	replicate some basic pip functionality to check dependencies before actually
-	importing pip. It definitely needs some work before it can be considered
-	reliable, eg:
-	TODO: Check for dist info folder to see if package is installed?
-	"""
-	def __init__(self, dependencies_dir, requirements_txt):
-		self.requirements = self.convert_requirements_to_list(requirements_txt)
-		self.dependencies = self.convert_dependencies_to_list(dependencies_dir)
-		self.dependency_names = self.get_dependency_names(self.dependencies, dependencies_dir)
-	
-	@staticmethod
-	def get_dependency_names(dependencies, dependencies_dir):
-		names_txt = os.path.join(dependencies_dir, 'names.txt')
-		if os.path.isfile(names_txt):
-			with open(names_txt) as f:
-				names = [i.strip() for i in f.readlines() if i]
-			return names
-		return [os.path.split(d)[1].partition('-')[0] for d in dependencies]
-	
-	@staticmethod
-	def convert_requirements_to_list(requirements_txt):
-		if not os.path.isfile(requirements_txt) or requirements_txt is None:
-			print('No requirements file at {}'.format(requirements_txt))
-			return []
-		with open(requirements_txt) as f:
-			return [pkg.rstrip('\n').replace('-', '_') for pkg in f.readlines()]
-	
-	@classmethod
-	def convert_dependencies_to_list(cls, dependencies_dir):
-		if not os.path.isdir(dependencies_dir) or dependencies_dir is None:
-			print('No dependencies directory at {}'.format(dependencies_dir))
-			return []
-		generic = cls._convert_dependecies_to_list(dependencies_dir)
-		os_dependencies_dir = os.path.join(dependencies_dir, platform.system())
-		os_specific = []
-		if os.path.isdir(os_dependencies_dir):
-			os_specific = cls._convert_dependecies_to_list(os_dependencies_dir)
-		return generic + os_specific
-	
-	@staticmethod
-	def _convert_dependecies_to_list(dependencies_dir):
-		return [os.path.join(dependencies_dir, filename)
-				for filename in os.listdir(dependencies_dir)
-				if filename[-2:] in ('hl', 'gz', 'gg')]
-	
-	def get_unmet(self):
-		unmet = []
-		for dependency in self.dependency_names:
-			try:
-				imp.find_module(dependency)
-			except ImportError:
-				print(dependency, 'not found')
-				unmet = self.dependencies
-				break
-		for requirement in self.requirements:
-			try:
-				imp.find_module(requirement)
-			except ImportError:
-				unmet.append(requirement)
-		return unmet
-	
-	def install_unmet(self):
-		install_these = self.get_unmet()
-		if len(install_these) > 0:
-			try:
-				from pip import main as pip_main
-			except ImportError:
-				from pip._internal import main as pip_main
-			print('Installing dependencies: {}'.format(install_these))
-			for pkg in install_these:
-				pip_main(['install', pkg])
 
 
 if __name__ == '__main__':
