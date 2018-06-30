@@ -28,10 +28,7 @@ class SystemStrings:
 
 
 def main(args=None):
-	if args is None:
-		args = _parse_args()
-	else:
-		args = _parse_args(args)
+	args = _parse_args(args)
 	virtualenv = VirtualEnv(args.destination, args.virtualenv_zip)
 	if args.install_here:
 		installer = Installer(args.dependencies)
@@ -44,7 +41,7 @@ def main(args=None):
 		virtualenv.run_inside(sys.argv[:1] + ['--install-here'] + sys.argv[1:])
 
 
-def _parse_args():
+def _parse_args(args=None):
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-y', '--yes', action='store_true')
 	parser.add_argument('-o', '--destination')
@@ -61,7 +58,7 @@ def _parse_args():
 							 'called from within the virtualenv, and it should '
 							 'install distributions directly into the calling '
 							 'python installation.')
-	args = parser.parse_args()
+	args = parser.parse_args(args)
 	_resolve_arguments(args)
 	if args.yes:
 		global YES
