@@ -9,7 +9,7 @@ Run it like this to create a basic virtualenv:
 python virtualenv_deployer.py
 ```
 
-## Automatically Distribution Installation
+## Automatic Distribution Installation
 virtualenv_deployer will automatically install packages from a requirements file into your virtualenv. You can run it repeatedly as you update your requirements file and it will continue to update the virtualenv.
 
 Make a requirements.txt file including the name of every distribution you want to install (local and remote), and if you have local distributions you want to install, put the wheels or any other format into a dependencies directory. If you use the name "requirements.txt" and "dependencies" for each of those respectively in your working directory, virtualenv_deployer will find them and install them automatically with the above command.
