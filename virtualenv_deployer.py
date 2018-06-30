@@ -27,8 +27,10 @@ class SystemStrings:
 	RETURN = {'Windows': '\r\n'}.get(platform.system(), '\n')
 
 
-def main(args=None):
-	args = _parse_args(args)
+def main(clargs=None):
+	if clargs is None:
+		clargs = sys.argv[1:]
+	args = _parse_args(clargs)
 	virtualenv = VirtualEnv(args.destination, args.virtualenv_zip)
 	if args.install_here:
 		installer = Installer(args.dependencies)
@@ -38,10 +40,10 @@ def main(args=None):
 			installer.install(args.pip_install)
 	else:
 		virtualenv.ensure_existence()
-		virtualenv.run_inside(sys.argv[:1] + ['--install-here'] + sys.argv[1:])
+		virtualenv.run_inside([__file__] + ['--install-here'] + clargs)
 
 
-def _parse_args(args=None):
+def _parse_args(clargs=None):
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-y', '--yes', action='store_true')
 	parser.add_argument('-o', '--destination')
@@ -58,7 +60,7 @@ def _parse_args(args=None):
 							 'called from within the virtualenv, and it should '
 							 'install distributions directly into the calling '
 							 'python installation.')
-	args = parser.parse_args(args)
+	args = parser.parse_args(clargs)
 	_resolve_arguments(args)
 	if args.yes:
 		global YES
