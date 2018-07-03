@@ -116,7 +116,7 @@ class Installer(object):
 		self.install(['-r', requirements_txt])
 	
 	def install(self, pip_args):
-		self.pip_main(['install'] + pip_args)
+		self.pip_main(['install'] + self.common_pip_args + pip_args)
 	
 	@property
 	def pip_main(self):
