@@ -1,5 +1,6 @@
 import argparse
 import imp
+import json
 import os
 import platform
 import shutil
@@ -8,9 +9,9 @@ import sys
 import zipfile
 # Python 2/3 compatibility
 try:
-	from urllib import urlretrieve
+	from urllib import urlretrieve, urlopen
 except ImportError:
-	from urllib.request import urlretrieve
+	from urllib.request import urlretrieve, urlopen
 try:
 	input = raw_input
 except NameError:
@@ -130,17 +131,16 @@ class Installer(object):
 
 
 class VirtualEnv(object):
-	VERSION = '16.0.0'
+	VERSION = '16.5.0'  # todo dynamic
 	
 	def __init__(self, destination, virtualenv_zip=None):
 		self.home = os.path.join(destination, 'virtualenv')
-		self.zip = virtualenv_zip
-		self.bin_dir = os.path.join(self.home, platform.system(), SystemStrings.BIN_DIR)
+		self.bin_dir = os.path.join(self.home, SystemStrings.BIN_DIR)
 		self.python = os.path.join(self.bin_dir, 'python' + SystemStrings.EXE)
 		self.activate = os.path.join(self.bin_dir, 'activate' + SystemStrings.BAT)
 		self._activate_this = os.path.join(self.bin_dir, 'activate_this.py')
-		self.tmp = os.path.join(self.home, 'tmp')
-		self.os_folder = os.path.join(self.home, platform.system())
+		self.os_folder = os.path.join(self.home)
+		self._virtualenv_library = VirtualEnvLibrary(os.path.join(self.home, 'tmp'), virtualenv_zip)
 		
 	def ensure_existence(self):
 		if not self.integrity_check():
@@ -166,26 +166,7 @@ class VirtualEnv(object):
 		return True
 	
 	def setup(self):
-		if self.zip is None:
-			makedirs_delete_existing(self.tmp)
-			print('Downloading virtualenv...')
-			self.zip = self.download_source()
-		print('Extracting virtualenv...')
-		extract_zip(self.zip, self.tmp)
-		print('virtualenv source acquired.')
-		virtualenvpy = os.path.join(self.tmp, 'virtualenv-{}'.format(self.VERSION),
-									'virtualenv.py')
-		makedirs_delete_existing(self.os_folder)
-		self.create(virtualenvpy)
-	
-	def download_source(self):
-		local = os.path.join(self.tmp, 'venv_{}.zip'.format(self.VERSION))
-		url = 'https://github.com/pypa/virtualenv/archive/{}.zip'.format(self.VERSION)
-		urlretrieve(url, local)
-		return local
-	
-	def create(self, virtualenvpy):
-		virtualenv = imp.load_source('virtualenv', virtualenvpy)
+		virtualenv = self._virtualenv_library.get()
 		orig_sys_argv = sys.argv
 		sys.argv = ['virtualenv.py', self.os_folder]
 		virtualenv.main()
@@ -200,10 +181,56 @@ class VirtualEnv(object):
 		return self.run_inside(['-m', 'pip', 'install', pip_args])
 	
 	def activate_this(self):
+		# todo python3 compatibility? this isn't even used anywhere
 		execfile(self._activate_this, dict(__file__=self._activate_this))
 
 
-def validate_command(args, expected_stdout=b'', expected_stderr=b'',
+class VirtualEnvLibrary(object):
+	def __init__(self, tmp, zip):
+		self.tmp = tmp
+		self.zip = zip
+		self._cache = None
+	
+	def get(self):
+		self._cache = self._acquire()
+		return self._cache
+	
+	def _acquire(self):
+		lib = self._try_to_acquire_installation()
+		return self._acquire_virtualenv_py() if lib is None else lib
+		
+	@staticmethod
+	def _try_to_acquire_installation():
+		try:
+			import virtualenv
+		except ImportError:
+			return None
+		print('Using installed virtualenv distribution.')
+		return virtualenv
+	
+	def _acquire_virtualenv_py(self):
+		metadata = urlopen('https://pypi.org/pypi/virtualenv/json').read()
+		latest_version = json.loads(metadata)['info']['version']
+		ultimate_location = os.path.join(self.tmp, 'virtualenv-{}'.format(latest_version), 'virtualenv.py')
+		if os.path.isfile(ultimate_location):
+			return ultimate_location
+		if self.zip is None:
+			makedirs_delete_existing(self.tmp)
+			self.zip = self._download_source_zip(latest_version)
+		print('Extracting virtualenv...')
+		extract_zip(self.zip, self.tmp)
+		print('virtualenv source acquired.')
+		return imp.load_source('virtualenv', ultimate_location)
+	
+	def _download_source_zip(self, version):
+		print('Downloading virtualenv...')
+		local = os.path.join(self.tmp, 'venv_{}.zip'.format(version))
+		url = 'https://github.com/pypa/virtualenv/archive/{}.zip'.format(version)
+		urlretrieve(url, local)
+		return local
+
+
+def validate_command(args, expected_stdout='', expected_stderr='',
 					 expected_returncode=0):
 	process = subprocess.Popen(args, stdout=subprocess.PIPE,
 							   stderr=subprocess.PIPE)
