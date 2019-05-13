@@ -82,10 +82,10 @@ def _resolve_arguments(args):
 		cwd = os.getcwd()
 		print('Deploying to working directory: ' + cwd)
 		args.destination = cwd
-	args.dependencies = _resolve_item(args.dependencies, 'dependencies',
+	args.dependencies = _resolve_item(args.dependencies, 'dist',
 									  os.path.isdir, 'local dependencies')
-	args.requirements = _resolve_item(args.requirements, 'requirements.txt',
-									  os.path.isfile, 'requirements file')
+	# args.requirements = _resolve_item(args.requirements, 'requirements.txt',
+	# 								  os.path.isfile, 'requirements file')
 	args.virtualenv_zip = _resolve_item(args.virtualenv_zip, 'virtualenv.zip',
 										os.path.isfile, 'pre-existing virtualenv.zip')
 
@@ -131,15 +131,12 @@ class Installer(object):
 
 
 class VirtualEnv(object):
-	VERSION = '16.5.0'  # todo dynamic
-	
 	def __init__(self, destination, virtualenv_zip=None):
-		self.home = os.path.join(destination, 'virtualenv')
+		self.home = os.path.join(destination, 'virtualenv')  # todo customize with --name argument
 		self.bin_dir = os.path.join(self.home, SystemStrings.BIN_DIR)
 		self.python = os.path.join(self.bin_dir, 'python' + SystemStrings.EXE)
 		self.activate = os.path.join(self.bin_dir, 'activate' + SystemStrings.BAT)
 		self._activate_this = os.path.join(self.bin_dir, 'activate_this.py')
-		self.os_folder = os.path.join(self.home)
 		self._virtualenv_library = VirtualEnvLibrary(os.path.join(self.home, 'tmp'), virtualenv_zip)
 		
 	def ensure_existence(self):
@@ -168,7 +165,7 @@ class VirtualEnv(object):
 	def setup(self):
 		virtualenv = self._virtualenv_library.get()
 		orig_sys_argv = sys.argv
-		sys.argv = ['virtualenv.py', self.os_folder]
+		sys.argv = ['virtualenv.py', self.home]
 		virtualenv.main()
 		sys.argv = orig_sys_argv
 	
@@ -186,9 +183,11 @@ class VirtualEnv(object):
 
 
 class VirtualEnvLibrary(object):
+	"""Gets library if installed, otherwise download source and import py file"""
+	
 	def __init__(self, tmp, zip):
-		self.tmp = tmp
-		self.zip = zip
+		self._tmp = tmp
+		self._zip = zip
 		self._cache = None
 	
 	def get(self):
@@ -211,20 +210,20 @@ class VirtualEnvLibrary(object):
 	def _acquire_virtualenv_py(self):
 		metadata = urlopen('https://pypi.org/pypi/virtualenv/json').read()
 		latest_version = json.loads(metadata)['info']['version']
-		ultimate_location = os.path.join(self.tmp, 'virtualenv-{}'.format(latest_version), 'virtualenv.py')
+		ultimate_location = os.path.join(self._tmp, 'virtualenv-{}'.format(latest_version), 'virtualenv.py')
 		if os.path.isfile(ultimate_location):
 			return ultimate_location
-		if self.zip is None:
-			makedirs_delete_existing(self.tmp)
-			self.zip = self._download_source_zip(latest_version)
+		if self._zip is None:
+			makedirs_delete_existing(self._tmp)
+			self._zip = self._download_source_zip(latest_version)
 		print('Extracting virtualenv...')
-		extract_zip(self.zip, self.tmp)
+		extract_zip(self._zip, self._tmp)
 		print('virtualenv source acquired.')
 		return imp.load_source('virtualenv', ultimate_location)
 	
 	def _download_source_zip(self, version):
 		print('Downloading virtualenv...')
-		local = os.path.join(self.tmp, 'venv_{}.zip'.format(version))
+		local = os.path.join(self._tmp, 'venv_{}.zip'.format(version))
 		url = 'https://github.com/pypa/virtualenv/archive/{}.zip'.format(version)
 		urlretrieve(url, local)
 		return local
